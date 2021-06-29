@@ -1,10 +1,15 @@
 import time
 import pandas as pd
-from sqlalchemy import create_engine
+# S3 & Postgres
 import psycopg2
 import boto3
 import s3fs
-from prefect import Flow
+from sqlalchemy import create_engine
+# Prefect
+from prefect import task, Flow
+from datetime import timedelta
+from prefect.schedules import IntervalSchedule
+# local
 from credentials import *
 from generate import generate_daily_data
 from etl_funcs import to_s3, from_s3, connect_postgres, upsert_postgres, create_and_fill_table_postgres, set_pk_postgres, merge, sort
@@ -15,6 +20,9 @@ from etl_funcs import to_s3, from_s3, connect_postgres, upsert_postgres, create_
 3. pull from s3 and sort
 4. upsert to postgres
 """
+
+# The original insert of 30M rows worked but it took hours...probably 8-12 hrs
+
 
 if __name__ == "__main__":
 

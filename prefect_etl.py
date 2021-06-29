@@ -1,37 +1,71 @@
 import time
 import pandas as pd
-from sqlalchemy import create_engine
+# S3 & Postgres
 import psycopg2
 import boto3
 import s3fs
+from sqlalchemy import create_engine
+# Prefect
+from prefect import task, Flow, Parameter
+from datetime import date, timedelta
+from prefect.schedules import IntervalSchedule
+# local
 from credentials import *
 
 
-def to_s3(file, s3name):
+@task
+def generate_daily_data(rows):
+    """
+    generate upsert-able (some new rows, some replacing) data for daily insertion.
+    I am using all zeros to make the new rows easily identifiable.
+    we can use original data for benchmarking; daily data doesn't need to be big.
+    so we generate 100 new rows with index random between 0 and 40 million
+    """
+    
+    idx = [ np.random.randint(0,40000000) for _ in range(rows) ]
+    
+    df = pd.DataFrame(np.zeros(shape=(rows, 20))).reset_index()
+    df.columns = ['ID', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
+                   'Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R', 'Q']
+    
+    df.index = idx
+    df['ID'] = idx
+
+    print(df.head())
+
+    df.to_csv(f'data/new_data_{date.today()}.csv')
+    print(f"Data for {date.today()} saved")
+
+    return df
+
+@task
+def to_s3(file, s3file):
     """upload a file to the s3 mnnk/dsca/ folder"""
     
     s3 = boto3.resource('s3')
-    s3.meta.client.upload_file(file, 'mnnk', f'dsca/{s3name}')
+    s3.meta.client.upload_file(file, 'mnnk', f'dsca/{s3file}')
 
-    print(f"{s3name} saved to S3")
+    print(f"{s3file} saved to S3")
 
-def from_s3(s3file, cols, sep=','):
+@task
+def from_s3(s3filepath, cols, sep=','):
     """turn s3 file into pandas dataframe"""
-    filetype = s3file[-3:]
+    filetype = s3filepath[-3:]
 
     if filetype == 'csv':
         try:
-            df = pd.read_csv(s3file, sep=sep, usecols=cols)
+            df = pd.read_csv(s3filepath, sep=sep, usecols=cols)
         except:
             print("ERROR")
     elif filetype == 'fwf':
         try:
-            df = pd.read_fwf(s3file)
+            df = pd.read_fwf(s3filepath)
         except:
             print("ERROR")
     
     return df
 
+@task
 def connect_postgres():
     try:
         # connect to database
@@ -54,7 +88,8 @@ def connect_postgres():
 
     return conn, engine
 
-def upsert_postgres(df, table, engine, colnames, pk):
+@task
+def upsert_postgres(df, table, engine, cols, pk):
     """
     "Merge" new data into existing Postgres database, 
     replacing old data when a new row ID matches an
@@ -63,13 +98,13 @@ def upsert_postgres(df, table, engine, colnames, pk):
 
     # Index(['ID', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R', 'Q']
 
-    # string of colnames in quotes separated by comma and space
-    sql_colnames = ', '.join(list(map(lambda x: '"' + x + '"', colnames)))
+    # string of cols in quotes separated by comma and space
+    sql_cols = ', '.join(list(map(lambda x: '"' + x + '"', cols)))
     sql_pk = '"' + pk + '"'
     
     # change column names to fit any DataFrame
     sql = f""" 
-            INSERT INTO {table} ({sql_colnames})
+            INSERT INTO {table} ({sql_cols})
             VALUES {','.join([str(i) for i in list(df.to_records(index=False))])}
             ON CONFLICT ({sql_pk})
             DO  
@@ -99,6 +134,13 @@ def upsert_postgres(df, table, engine, colnames, pk):
     # execute upsert
     engine.execute(sql)
 
+@task
+def commit_and_close_postgres():
+    conn.commit() # commit to database
+    print("Changes committed")
+    conn.close() # close connection
+    print("Connection closed")
+
 def create_and_fill_table_postgres(engine, df, table):
     """save pandas dataframe to a new postgres table with a primary key"""
     # insert data
@@ -123,5 +165,39 @@ def merge(df1, df2, col1, col2):
 def sort(df, by, asc=True):
     return df.sort_values(by=by, ascending=asc)
 
+# design the flow
+with Flow("DSCA ETL") as flow:
+    # parameters
+    cols = Parameter("cols", 
+                default=['ID', 'A', 'B', 'C', 'D', 'E', 'F', 
+                        'G', 'H', 'I', 'J', 'Z', 'Y', 'X', 
+                        'W', 'V', 'U', 'T', 'S', 'R', 'Q'])
+    file = Parameter("file", default=f'data/new_data_{date.today()}.csv')
+    s3file = Parameter("s3file", default=f'new_data_{date.today()}.csv')
+    s3filepath = Parameter("s3filepath", default=f'{S3_PATH}/new_data_{date.today()}.csv')
+    sep = Parameter("sep", default=',')
+    pk = Parameter("pk", default='ID')
 
+    # generate new data
+    generate_daily_data(100)
+
+    # dump into S3 bucket
+    to_s3(f'data/new_data_{date.today()}.csv', f'new_data_{date.today()}.csv')
+
+    # retreive the new data from S3
+    df = from_s3(f'{S3_PATH}/new_data_2021-06-29.csv', cols)
+
+    # connect to database
+    conn, engine = connect_postgres()
+
+    # upsert the new data into postgres
+    upsert_postgres(df, 'newtable', engine, cols, 'ID')
+    
+    # commit and close
+    commit_and_close_postgres()
+
+
+# execute the flow
+flow.run()
+# can alter parameters: flow.run(cols=...)
 
