@@ -53,28 +53,7 @@ def connect_postgres():
 
     return conn, engine
 
-def create_table(df, table, conn, engine):
-    """
-    Create our table in Postgres
-    Change column names to match your data
-    """
-
-    engine.execute(f"DROP TABLE IF EXISTS {table}")
-
-    sql = f"""
-    CREATE TABLE {table} (
-        "ID" INTEGER UNIQUE,
-        "Item" VARCHAR,
-        "Date" VARCHAR,
-        "Date2" VARCHAR,
-        "Date3" VARCHAR
-    );
-    """
-
-    # execute upsert
-    engine.execute(sql)
-
-def upsert(df, table, engine, colnames, pk):
+def upsert_postgres(df, table, engine, colnames, pk):
     """
     "Merge" new data into existing Postgres database, 
     replacing old data when a new row ID matches an
@@ -103,44 +82,23 @@ def upsert(df, table, engine, colnames, pk):
     # execute upsert
     engine.execute(sql)
 
-
-def initialize_postgres(df, table, pk):
+def create_and_fill_table_postgres(engine, df, table):
     """save pandas dataframe to a new postgres table with a primary key"""
+    # insert data
     try:
-        # connect to database
-        conn = psycopg2.connect(
-            host=DATABASE_ENDPOINT,
-            database=DATABASE_NAME,
-            user=USERNAME,
-            password=PASSWORD,
-            port=PORT
-        )
-        print("Connected to database")
+        start_time = time.time()
+        df.to_sql(table, con=engine, if_exists='replace', chunksize=20000, method='multi')
+        print(f"to_sql took {(time.time() - start_time)} seconds")
+        print(f"{table} created and filled")
+    except:
+        print("DataFrame format doesn't match database table format")
 
-        # create engine
-        engine = create_engine(f'postgresql://{USERNAME}:{PASSWORD}@{DATABASE_ENDPOINT}:{PORT}/{DATABASE_NAME}')
-
-        print("Engine created")
-
-        # insert data
-        try:
-            start_time = time.time()
-            df.to_sql(table, con=engine, if_exists='replace', chunksize=20000, method='multi')
-            print(f"to_sql took {(time.time() - start_time)} seconds")
-            print("Data inserted")
-        except:
-            print("Data format doesn't match database format")
-
-    except psycopg2.OperationalError as e:
-        print(e)
-
-def set_pk(conn, engine, table, pk):
+def set_pk_postgres(conn, engine, table, pk):
     """set primary key (otherwise upsert won't work)"""
     
     engine.execute(f'ALTER TABLE {table} ADD CONSTRAINT "{pk}" PRIMARY KEY ("{pk}");')
 
-    print("ID altered to Primary Key")
-
+    print(f"{pk} set to Primary Key")
 
 def merge(df1, df2, col1, col2):
     """merge on ID column and time it"""
@@ -162,7 +120,7 @@ if __name__ == "__main__":
 
     conn, engine = connect_postgres() # connect to postgres database
 
-    set_pk(conn=conn, engine=engine, table='newtable', pk='ID')
+    set_pk_postgres(conn=conn, engine=engine, table='newtable', pk='ID')
 
     conn.commit() # commit to database
     conn.close() # close connection
@@ -175,13 +133,13 @@ if __name__ == "__main__":
     #df = sort(df, by="ID", asc=True)
 
 
-    #initialize_postgres(df, table='newtable', pk='ID')
+    #create_table_postgres(df, table='newtable', pk='ID')
 
 
 # THIS WORKS
 """
 df = pd.DataFrame({'col1': [3, 4, 5], 'col2': [6, 7, 8]})
-initialize_postgres(df, table='test', pk='col1')
+create_table_postgres(df, table='test', pk='col1')
 """
 # The original insert of 30M rows worked but it took hours...probably 8-12 hrs
 
