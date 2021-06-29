@@ -6,6 +6,8 @@ import boto3
 import s3fs
 from credentials import *
 
+# The original insert of 30M rows worked but it took hours...probably 8-12 hrs
+
 def to_s3(file, s3name):
     """upload a file to the s3 mnnk/dsca/ folder"""
     
@@ -14,13 +16,13 @@ def to_s3(file, s3name):
 
     print(f"{s3name} saved to S3")
 
-def from_s3(s3file, sep=','):
+def from_s3(s3file, cols, sep=','):
     """turn s3 file into pandas dataframe"""
     filetype = s3file[-3:]
 
     if filetype == 'csv':
         try:
-            df = pd.read_csv(s3file, sep=sep)
+            df = pd.read_csv(s3file, sep=sep, usecols=cols)
         except:
             print("ERROR")
     elif filetype == 'fwf':
@@ -73,10 +75,26 @@ def upsert_postgres(df, table, engine, colnames, pk):
             ON CONFLICT ({sql_pk})
             DO  
                 UPDATE SET "ID" = EXCLUDED."ID",
-                           "Item" = EXCLUDED."Item",
-                           "Date" = EXCLUDED."Date",
-                           "Date2" = EXCLUDED."Date2",
-                           "Date3" = EXCLUDED."Date3";
+                           "A" = EXCLUDED."A",
+                           "B" = EXCLUDED."B",
+                           "C" = EXCLUDED."C",
+                           "D" = EXCLUDED."D",
+                           "E" = EXCLUDED."E",
+                           "F" = EXCLUDED."F",
+                           "G" = EXCLUDED."G",
+                           "H" = EXCLUDED."H",
+                           "I" = EXCLUDED."I",
+                           "J" = EXCLUDED."J",
+                           "Z" = EXCLUDED."Z",
+                           "Y" = EXCLUDED."Y",
+                           "X" = EXCLUDED."X",
+                           "W" = EXCLUDED."W",
+                           "V" = EXCLUDED."V",
+                           "U" = EXCLUDED."U",
+                           "T" = EXCLUDED."T",
+                           "S" = EXCLUDED."S",
+                           "R" = EXCLUDED."R",
+                           "Q" = EXCLUDED."Q";
         """
 
     # execute upsert
@@ -118,28 +136,23 @@ def sort(df, by, asc=True):
 
 if __name__ == "__main__":
 
+    colnames = ['ID', 'A', 'B', 'C', 'D', 'E', 'F', 
+                'G', 'H', 'I', 'J', 'Z', 'Y', 'X', 
+                'W', 'V', 'U', 'T', 'S', 'R', 'Q']
+
+    df = from_s3(f'{S3_PATH}/new_data_2021-06-29.csv', cols=colnames)
+    print(df.head())
+
     conn, engine = connect_postgres() # connect to postgres database
 
-    set_pk_postgres(conn=conn, engine=engine, table='newtable', pk='ID')
+    #create_and_fill_table_postgres(engine=engine, df=df, table='newtable')
+    #set_pk_postgres(conn=conn, engine=engine, table='newtable', pk='ID')
+    start_time = time.time()
+    upsert_postgres(df, 'newtable', engine, colnames, 'ID')
+    print(f"Action took {(time.time() - start_time)} seconds")
 
     conn.commit() # commit to database
+    print("Changes committed")
     conn.close() # close connection
-
-    #df1 = pd.read_csv('data/numbers1_30000000.csv').drop(columns=['Unnamed: 0'])
-    #df2 = pd.read_csv('data/numbers2_30000000.csv').drop(columns=['Unnamed: 0'])
-
-
-    #df = merge(df1, df2, "ID", "ID")
-    #df = sort(df, by="ID", asc=True)
-
-
-    #create_table_postgres(df, table='newtable', pk='ID')
-
-
-# THIS WORKS
-"""
-df = pd.DataFrame({'col1': [3, 4, 5], 'col2': [6, 7, 8]})
-create_table_postgres(df, table='test', pk='col1')
-"""
-# The original insert of 30M rows worked but it took hours...probably 8-12 hrs
+    print("Connection closed")
 

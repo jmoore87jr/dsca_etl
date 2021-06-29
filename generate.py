@@ -5,13 +5,6 @@ import random
 from datetime import date
 from credentials import *
 
-# generate initial data
-# DSAMS: 
-#  columns: ID1, ID2, ID3, col1, col2, col3,...col7
-# CISIL: 
-#  columns: ID, col1, col2, col3,...col9
-
-# generate new smaller data daily
 
 def to_s3(file, s3name):
     """
@@ -68,15 +61,20 @@ def generate_daily_data(rows):
     df.index = idx
     df['ID'] = idx
 
+    print(df.head())
+
     df.to_csv(f'data/new_data_{date.today()}.csv')
+    print(f"Data for {date.today()} saved")
 
     return df
 
 
-generate_initial_data(30000000)
+#generate_initial_data(30000000)
 
 #to_s3('data/numbers1_30000000.csv', 'numbers1_30000000.csv')
 #to_s3('data/numbers2_30000000.csv', 'numbers2_30000000.csv')
 
-#generate_daily_data(100)
+df = generate_daily_data(100)
 #to_s3(f'data/new_data_{date.today()}.csv', f'new_data_{date.today()}.csv')
+print(df.head())
+print(','.join([str(i) for i in list(df.to_records(index=False))]))

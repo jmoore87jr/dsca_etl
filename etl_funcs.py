@@ -100,17 +100,13 @@ def to_postgres(df, table):
 
 def merge(df1, df2, col1, col2):
     """merge on ID column and time it"""
-    start_time = time.time()
     df = df1.merge(df2, left_on=col1, right_on=col2)
-    print(f"Merge took {(time.time() - start_time)} seconds")
     
     return df
 
 def sort(df, by, asc=True):
     """sort by ID and time it"""
-    start_time = time.time()
     df = df.sort_values(by=by, ascending=asc)
-    print(f"Sort took {(time.time() - start_time)} seconds")
 
     return df
 
