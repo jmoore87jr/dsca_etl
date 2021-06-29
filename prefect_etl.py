@@ -1,4 +1,5 @@
 import time
+import numpy as np
 import pandas as pd
 # S3 & Postgres
 import psycopg2
@@ -8,10 +9,18 @@ from sqlalchemy import create_engine
 # Prefect
 from prefect import task, Flow, Parameter
 from datetime import date, timedelta
-from prefect.schedules import IntervalSchedule
+from prefect.schedules import Schedule, IntervalSchedule
+from prefect.schedules.clocks import CronClock
 # local
 from credentials import *
 
+# 1. have docker running (prefect uses docker-compose)
+# 2. 'pip install prefect'
+# 3. 'prefect backend server'
+# 4. 'prefect server start' (located at http://localhost:8080)
+# 5. 'prefect agent local start'
+# 6. `prefect create project '<project_name>'`
+# 7. register and run the flow in the python script with the tasks
 
 @task
 def generate_daily_data(rows):
@@ -65,7 +74,7 @@ def from_s3(s3filepath, cols, sep=','):
     
     return df
 
-@task
+@task(nout=2) # returns 2 values
 def connect_postgres():
     try:
         # connect to database
@@ -135,7 +144,7 @@ def upsert_postgres(df, table, engine, cols, pk):
     engine.execute(sql)
 
 @task
-def commit_and_close_postgres():
+def commit_and_close_postgres(conn):
     conn.commit() # commit to database
     print("Changes committed")
     conn.close() # close connection
@@ -178,6 +187,7 @@ with Flow("DSCA ETL") as flow:
     sep = Parameter("sep", default=',')
     pk = Parameter("pk", default='ID')
 
+
     # generate new data
     generate_daily_data(100)
 
@@ -192,12 +202,31 @@ with Flow("DSCA ETL") as flow:
 
     # upsert the new data into postgres
     upsert_postgres(df, 'newtable', engine, cols, 'ID')
-    
+
     # commit and close
-    commit_and_close_postgres()
+    commit_and_close_postgres(conn)
+
+
+projname = "dsca_etl"
+
+# schedule flow
+schedule = Schedule(clocks=[CronClock("40 19 * * *")])
+flow.schedule = schedule
+
+# register flow
+flow.register(project_name=projname)
+print("Flow registered")
 
 
 # execute the flow
-flow.run()
-# can alter parameters: flow.run(cols=...)
+#flow.run()
 
+"""
+yn = input("Run the flow? (y/n)")
+if yn == 'y':
+    print(f"Running {projname}...")
+    flow.run()
+    # can alter parameters: flow.run(cols=...)
+else:
+    print("Program finished")
+"""
