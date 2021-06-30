@@ -75,7 +75,7 @@ def from_s3(s3filepath, cols, sep=','):
     return df
 
 @task
-def upsert_postgres(df, table, cols, pk):
+def upsert_postgres(df, table, cols, pk, max_retries=1, retry_delay=timedelta(minutes=1)):
     """
     "Merge" new data into existing Postgres database, 
     replacing old data when a new row ID matches an
@@ -196,7 +196,7 @@ with Flow("DSCA ETL") as flow:
 projname = "dsca_etl"
 
 # schedule flow
-schedule = Schedule(clocks=[CronClock("50 19 * * *")])
+schedule = Schedule(clocks=[CronClock("10 17 * * *")])
 flow.schedule = schedule
 
 # register flow
