@@ -11,6 +11,8 @@ from prefect import task, Flow, Parameter
 from datetime import date, timedelta
 from prefect.schedules import Schedule, IntervalSchedule
 from prefect.schedules.clocks import CronClock
+from prefect.engine.state import Success, Failed
+from prefect.utilities.notifications import slack_notifier
 # local
 from credentials import *
 
@@ -21,6 +23,9 @@ from credentials import *
 # 5. 'prefect agent local start'
 # 6. `prefect create project '<project_name>'`
 # 7. register and run the flow in the python script with the tasks
+# 8. set up retries, slack notifications, and more
+
+handler = slack_notifier(only_states=[Success, Failed])
 
 @task
 def generate_daily_data(rows):
@@ -75,7 +80,7 @@ def from_s3(s3filepath, cols, sep=','):
     return df
 
 @task
-def upsert_postgres(df, table, cols, pk, max_retries=1, retry_delay=timedelta(minutes=1)):
+def upsert_postgres(df, table, cols, pk, max_retries=1, retry_delay=timedelta(minutes=1), state_handlers=[handler]):
     """
     "Merge" new data into existing Postgres database, 
     replacing old data when a new row ID matches an
@@ -196,14 +201,14 @@ with Flow("DSCA ETL") as flow:
 projname = "dsca_etl"
 
 # schedule flow
-schedule = Schedule(clocks=[CronClock("10 17 * * *")])
+schedule = Schedule(clocks=[CronClock("40 21 * * *")])
 flow.schedule = schedule
 
 # register flow
 flow.register(project_name=projname)
 print("Flow registered")
 
-# execute the flow
+# execute the flow on the specified schedule
 #flow.run()
 
 
