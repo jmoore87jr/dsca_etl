@@ -74,8 +74,13 @@ def from_s3(s3filepath, cols, sep=','):
     
     return df
 
-@task(nout=2) # returns 2 values
-def connect_postgres():
+@task
+def upsert_postgres(df, table, cols, pk):
+    """
+    "Merge" new data into existing Postgres database, 
+    replacing old data when a new row ID matches an
+    existing one
+    """
     try:
         # connect to database
         conn = psycopg2.connect(
@@ -94,16 +99,6 @@ def connect_postgres():
 
     except psycopg2.OperationalError as e:
         print(e)
-
-    return conn, engine
-
-@task
-def upsert_postgres(df, table, engine, cols, pk):
-    """
-    "Merge" new data into existing Postgres database, 
-    replacing old data when a new row ID matches an
-    existing one
-    """
 
     # Index(['ID', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R', 'Q']
 
@@ -143,12 +138,9 @@ def upsert_postgres(df, table, engine, cols, pk):
     # execute upsert
     engine.execute(sql)
 
-@task
-def commit_and_close_postgres(conn):
-    conn.commit() # commit to database
-    print("Changes committed")
-    conn.close() # close connection
-    print("Connection closed")
+    # commit and close
+    conn.commit()
+    conn.close()
 
 def create_and_fill_table_postgres(engine, df, table):
     """save pandas dataframe to a new postgres table with a primary key"""
@@ -197,36 +189,21 @@ with Flow("DSCA ETL") as flow:
     # retreive the new data from S3
     df = from_s3(f'{S3_PATH}/new_data_2021-06-29.csv', cols)
 
-    # connect to database
-    conn, engine = connect_postgres()
-
     # upsert the new data into postgres
-    upsert_postgres(df, 'newtable', engine, cols, 'ID')
-
-    # commit and close
-    commit_and_close_postgres(conn)
+    upsert_postgres(df, 'newtable', cols, 'ID')
 
 
 projname = "dsca_etl"
 
 # schedule flow
-schedule = Schedule(clocks=[CronClock("40 19 * * *")])
+schedule = Schedule(clocks=[CronClock("50 19 * * *")])
 flow.schedule = schedule
 
 # register flow
 flow.register(project_name=projname)
 print("Flow registered")
 
-
 # execute the flow
 #flow.run()
 
-"""
-yn = input("Run the flow? (y/n)")
-if yn == 'y':
-    print(f"Running {projname}...")
-    flow.run()
-    # can alter parameters: flow.run(cols=...)
-else:
-    print("Program finished")
-"""
+
