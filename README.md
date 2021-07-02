@@ -8,8 +8,8 @@
 7. register and run the flow in the python script with the tasks
 8. set up retries, slack notifications, etc
 
-# Dask deployment
-https://docs.prefect.io/core/advanced_tutorials/dask-cluster.html
+# Prefect deployment w/ Dask
+https://docs.prefect.io/core/advanced_tutorials/dask-cluster.html \
 Everything looks the same except: 
 ```
 from prefect.executors import DaskExecutor
