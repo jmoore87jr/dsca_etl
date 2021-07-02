@@ -19,7 +19,7 @@ from credentials import *
 # 1. have docker running (prefect uses docker-compose)
 # 2. 'pip install prefect'
 # 3. 'prefect backend server'
-# 4. 'prefect server start' (located at http://localhost:8080)
+# 4. 'prefect server start' (default http://localhost:8080)
 # 5. 'prefect agent local start'
 # 6. `prefect create project '<project_name>'`
 # 7. register and run the flow in the python script with the tasks
@@ -171,44 +171,45 @@ def merge(df1, df2, col1, col2):
 def sort(df, by, asc=True):
     return df.sort_values(by=by, ascending=asc)
 
-# design the flow
-with Flow("DSCA ETL") as flow:
-    # parameters
-    cols = Parameter("cols", 
-                default=['ID', 'A', 'B', 'C', 'D', 'E', 'F', 
-                        'G', 'H', 'I', 'J', 'Z', 'Y', 'X', 
-                        'W', 'V', 'U', 'T', 'S', 'R', 'Q'])
-    file = Parameter("file", default=f'data/new_data_{date.today()}.csv')
-    s3file = Parameter("s3file", default=f'new_data_{date.today()}.csv')
-    s3filepath = Parameter("s3filepath", default=f'{S3_PATH}/new_data_{date.today()}.csv')
-    sep = Parameter("sep", default=',')
-    pk = Parameter("pk", default='ID')
+if __name__ == "__main__":
+    # design the flow
+    with Flow("DSCA ETL") as flow:
+        # parameters
+        cols = Parameter("cols", 
+                    default=['ID', 'A', 'B', 'C', 'D', 'E', 'F', 
+                            'G', 'H', 'I', 'J', 'Z', 'Y', 'X', 
+                            'W', 'V', 'U', 'T', 'S', 'R', 'Q'])
+        file = Parameter("file", default=f'data/new_data_{date.today()}.csv')
+        s3file = Parameter("s3file", default=f'new_data_{date.today()}.csv')
+        s3filepath = Parameter("s3filepath", default=f'{S3_PATH}/new_data_{date.today()}.csv')
+        sep = Parameter("sep", default=',')
+        pk = Parameter("pk", default='ID')
 
 
-    # generate new data
-    generate_daily_data(100)
+        # generate new data
+        generate_daily_data(100)
 
-    # dump into S3 bucket
-    to_s3(f'data/new_data_{date.today()}.csv', f'new_data_{date.today()}.csv')
+        # dump into S3 bucket
+        to_s3(f'data/new_data_{date.today()}.csv', f'new_data_{date.today()}.csv')
 
-    # retreive the new data from S3
-    df = from_s3(f'{S3_PATH}/new_data_2021-06-29.csv', cols)
+        # retreive the new data from S3
+        df = from_s3(f'{S3_PATH}/new_data_2021-06-29.csv', cols)\
+            
+        # upsert the new data into postgres
+        upsert_postgres(df, 'newtable', cols, 'ID')
 
-    # upsert the new data into postgres
-    upsert_postgres(df, 'newtable', cols, 'ID')
 
+    projname = "dsca_etl"
 
-projname = "dsca_etl"
+    # schedule flow
+    schedule = Schedule(clocks=[CronClock("40 21 * * *")])
+    flow.schedule = schedule
 
-# schedule flow
-schedule = Schedule(clocks=[CronClock("40 21 * * *")])
-flow.schedule = schedule
+    # register flow
+    flow.register(project_name=projname)
+    print("Flow registered")
 
-# register flow
-flow.register(project_name=projname)
-print("Flow registered")
-
-# execute the flow on the specified schedule
-#flow.run()
+    # execute the flow on the specified schedule
+    #flow.run()
 
 
