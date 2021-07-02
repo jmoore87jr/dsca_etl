@@ -23,7 +23,13 @@ from credentials import *
 # 5. 'prefect agent local start'
 # 6. `prefect create project '<project_name>'`
 # 7. register and run the flow in the python script with the tasks
-# 8. set up retries, slack notifications, and more
+# 8. set up retries, slack notifications, etc
+
+# TODO: Dask deployment: https://docs.prefect.io/core/advanced_tutorials/dask-cluster.html
+# everything looks the same except:
+# from prefect.executors import DaskExecutor
+# executor = DaskExecutor(address="<tcp_address_of_scheduler>:<port>")
+# flow.run(executor=executor)
 
 handler = slack_notifier(only_states=[Success, Failed])
 
@@ -171,7 +177,7 @@ def merge(df1, df2, col1, col2):
 def sort(df, by, asc=True):
     return df.sort_values(by=by, ascending=asc)
 
-if __name__ == "__main__":
+def main():
     # design the flow
     with Flow("DSCA ETL") as flow:
         # parameters
@@ -211,5 +217,8 @@ if __name__ == "__main__":
 
     # execute the flow on the specified schedule
     #flow.run()
+
+if __name__ == "__main__":
+    main()
 
 
